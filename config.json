@@ -13,7 +13,7 @@
   "language": "en",
   "notesLanguage": "change to your language with ISO 639-1 code, available languages: vi (Vietnamese), en (English)",
   "nickNameBot": "🚀ꨄ﹕一ꜝ 𝑩𝑨𝑺𝑺𝑰𝑻 BOT 😙💋",
-  "prefix": "~",
+  "prefix": "#",
   "noPrefix": true,
   "noPrefixNotes": "When true, Bot Admins (role 2) and Developers (role 4) can run commands without the prefix",
   "adminOnly": {
@@ -21,13 +21,13 @@
     "ignoreCommand": []
   },
   "adminBot": [
-    "61594329770983"
+    "61593852496761"
   ],
   "premiumUsers": [
-    "61594329770983"
+    "61593852496761"
   ],
   "devUsers": [
-    "61594329770983"
+    "61593852496761"
   ],
   "notes_premiumUsers": "List of user IDs with premium access (role 3)",
   "notes_devUsers": "List of developer IDs with full access (role 4)",
