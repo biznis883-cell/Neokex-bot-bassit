@@ -1,103 +1,67 @@
-const { getTime, drive } = global.utils;
+const fs = require("fs");
+const path = require("path");
 
 module.exports = {
-        config: {
-                name: "welcome",
-                version: "1.4",
-                author: "NTKhang",
-                category: "events"
-        },
+	config: {
+		name: "welcome",
+		version: "2.0",
+		author: "Ismail Meddah",
+		category: "events"
+	},
 
-        langs: {
-                vi: {
-                        session1: "sáng",
-                        session2: "trưa",
-                        session3: "chiều",
-                        session4: "tối",
-                        multiple1: "bạn",
-                        multiple2: "các bạn",
-                        welcomeMessage: "Cảm ơn bạn đã thêm mình vào nhóm!\nPrefix của bot: %1\nĐể xem danh sách lệnh, vui lòng nhập: %1help",
-                        defaultWelcomeMessage: "Chào mừng {userNameTag} đã đến với {boxName}! Chúc {multiple} một buổi {session} vui vẻ 🎉"
-                },
-                en: {
-                        session1: "morning",
-                        session2: "noon",
-                        session3: "afternoon",
-                        session4: "evening",
-                        multiple1: "you",
-                        multiple2: "you guys",
-                        welcomeMessage: "Thanks for adding me to the group.\nBot prefix: %1\nUse %1help to see the available commands.",
-                        defaultWelcomeMessage: "Welcome {userNameTag} to {boxName}! Wishing you a great {session} 🎉"
-                }
-        },
+	onStart: async function ({ api, event }) {
+		// Only handle when someone is added to the group
+		if (event.logMessageType !== "log:subscribe")
+			return;
 
-        onStart: async ({ threadsData, message, event, api, getLang, client }) => {
-                if (event.logMessageType !== "log:subscribe")
-                        return;
+		const { threadID } = event;
+		const { addedParticipants } = event.logMessageData || {};
 
-                return async function () {
-                        const { threadID } = event;
-                        const { addedParticipants } = event.logMessageData;
-                        if (!addedParticipants || addedParticipants.length === 0)
-                                return;
+		if (!addedParticipants || addedParticipants.length === 0)
+			return;
 
-                        let threadData;
-                        try {
-                                threadData = await threadsData.get(threadID);
-                        } catch (e) {
-                                return;
-                        }
+		const botID = String(api.getCurrentUserID());
 
-                        if (!threadData?.settings?.sendWelcomeMessage)
-                                return;
+		// Check if the bot itself was added
+		const botWasAdded = addedParticipants.some(
+			user => String(user.userFbId) === botID
+		);
 
-                        const botID = api.getCurrentUserID();
+		// Only send the video when the bot joins
+		if (!botWasAdded)
+			return;
 
-                        // ── Case 1: Bot itself was added to the group ──
-                        if (addedParticipants.some(item => item.userFbId == botID)) {
-                                const prefix = global.utils.getPrefix(threadID);
-                                return message.send(getLang("welcomeMessage", prefix));
-                        }
+		// Video file in the same folder as this command
+		const videoPath = path.join(
+			__dirname,
+			"Mohamed Ayman - في قلوبهم مرض فزادهم الله مرضاً_ - الشيخ مشاري راشد.mp4"
+		);
 
-                        // ── Case 2: Regular member(s) joined ──
+		// Check if the video exists
+		if (!fs.existsSync(videoPath)) {
+			console.error(
+				"[WELCOME] Video file not found:",
+				videoPath
+			);
 
-                        const hours = +getTime("HH");
-                        const session =
-                                hours < 10 ? getLang("session1") :
-                                hours < 12 ? getLang("session2") :
-                                hours < 18 ? getLang("session3") :
-                                             getLang("session4");
+			return api.sendMessage(
+				"𝙒𝙚𝙡𝙘𝙤𝙢𝙚 𝙫𝙞𝙙𝙚𝙤 𝙛𝙞𝙡𝙚 𝙬𝙖𝙨 𝙣𝙤𝙩 𝙛𝙤𝙪𝙣𝙙.",
+				threadID
+			);
+		}
 
-                        const isMultiple = addedParticipants.length > 1;
-                        const multiple = isMultiple ? getLang("multiple2") : getLang("multiple1");
-                        const threadName = threadData.threadName;
-
-                        let { welcomeMessage = getLang("defaultWelcomeMessage") } = threadData.data;
-
-                        const namesList = addedParticipants.map(u => u.fullName).join(", ");
-                        const firstName = addedParticipants[0].fullName;
-                        const mentions = addedParticipants.map(u => ({ tag: u.fullName, id: u.userFbId }));
-
-                        welcomeMessage = welcomeMessage
-                                .replace(/\{userName\}/g, isMultiple ? namesList : firstName)
-                                .replace(/\{userNameTag\}/g, isMultiple ? namesList : firstName)
-                                .replace(/\{multiple\}/g, multiple)
-                                .replace(/\{boxName\}|\{threadName\}/g, threadName)
-                                .replace(/\{session\}/g, session);
-
-                        const form = { body: welcomeMessage, mentions };
-
-                        if (threadData.data.welcomeAttachment && threadData.data.welcomeAttachment.length > 0) {
-                                const streams = threadData.data.welcomeAttachment.map(fileId =>
-                                        drive.getFile(fileId, "stream")
-                                );
-                                const settled = await Promise.allSettled(streams);
-                                form.attachment = settled
-                                        .filter(({ status }) => status === "fulfilled")
-                                        .map(({ value }) => value);
-                        }
-
-                        message.send(form);
-                };
-        }
+		try {
+			return api.sendMessage(
+				{
+					attachment: fs.createReadStream(videoPath)
+				},
+				threadID
+			);
+		} catch (error) {
+			console.error(
+				"[WELCOME VIDEO ERROR]",
+				error
+			);
+		}
+	}
 };
