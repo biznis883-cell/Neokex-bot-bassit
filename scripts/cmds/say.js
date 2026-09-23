@@ -1,96 +1,60 @@
-const axios = require('axios');
-const fs = require('fs-extra');
+const axios = require("axios");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+
+const V = { boys: "boys", girls: "girls" };
+const L = { bn: "bn-BD", en: "en-US", hi: "hi-IN", ur: "ur-PK", ar: "ar-SA", es: "es-ES", fr: "fr-FR", de: "de-DE", ja: "ja-JP", ko: "ko-KR", zh: "zh-CN", ru: "ru-RU", pt: "pt-BR", tr: "tr-TR", vi: "vi-VN", id: "id-ID", th: "th-TH" };
+const VL = Object.keys(V);
+const LL = Object.keys(L);
 
 module.exports = {
   config: {
     name: "say",
-    version: "1.7",
-    author: "Samir Œ",
+    version: "2.0.0",
+    author: "Azadx69x",
     countDown: 5,
     role: 0,
-    category: "tts",
-    description: "bot will make your text into voice.",
-    guide: {
-      en: "{pn} your text (default will be 'en') | {pn} your text | [use two words ISO 639-1 code, ex: English-en, Bangla-bn, Hindi-hi or more, search Google for your language code]"
-    }
+    description: "Text to speech",
+    category: "utility",
+    guide: "{pn} <text> | [voice] | [lang] | [mp3/mp4]"
   },
-
-  onStart: async function ({ api, args, message, event }) {
-    const { getPrefix } = global.utils;
-    const p = getPrefix(event.threadID);
-
-    let text;
-    let number = 'en';
-
-    if (event.type === "message_reply") {
-      text = event.messageReply.body;
-    } else {
-      if (args && args.length > 0) {
-        if (args.includes("|")) {
-          const splitArgs = args.join(" ").split("|").map(arg => arg.trim());
-          text = splitArgs[0];
-          number = splitArgs[1] || 'en';
-        } else {
-          text = args.join(" ");
-        }
-      } else {
-        text = '';
-      }
+  onStart: async function({ message, args }) {
+    const t = args.join(" ");
+    if (!t) return message.reply("❌ Provide text!");
+    let text = t, voice = "girls", lang = "bn", fmt = "mp3";
+    const parts = t.split(/[\|\-]/).map(p => p.trim()).filter(Boolean);
+    text = parts[0] || t;
+    for (let i = 1; i < parts.length; i++) {
+      const p = parts[i].toLowerCase();
+      if (["mp3", "mp4"].includes(p)) fmt = p;
+      else if (VL.includes(p)) voice = p;
+      else if (LL.includes(p)) lang = p;
     }
-
-    if (!text) {
-      return message.reply(`Please provide some text. Example:\n${p}say hi there`);
-    }
-
-    const path = `${__dirname}/tmp/tts.mp3`;
-
+    const v = V[voice] || voice;
+    const l = L[lang] || lang;
     try {
-      if (text.length <= 150) {
-        const response = await axios({
-          method: "get",
-          url: `https://translate.google.com/translate_tts?ie=UTF-8&tl=${number}&client=tw-ob&q=${encodeURIComponent(text)}`,
-          responseType: "stream"
-        });
-
-        const writer = fs.createWriteStream(path);
-        response.data.pipe(writer);
-        writer.on("finish", () => {
-          message.reply({
-            body: text,
-            attachment: fs.createReadStream(path)
-          }, () => {
-            fs.remove(path);
-          });
-        });
-      } else {
-        const chunkSize = 150;
-        const chunks = text.match(new RegExp(`.{1,${chunkSize}}`, 'g'));
-
-        for (let i = 0; i < chunks.length; i++) {
-          const response = await axios({
-            method: "get",
-            url: `https://translate.google.com/translate_tts?ie=UTF-8&tl=${number}&client=tw-ob&q=${encodeURIComponent(chunks[i])}`,
-            responseType: "stream"
-          });
-
-          const writer = fs.createWriteStream(path, { flags: i === 0 ? 'w' : 'a' });
-          response.data.pipe(writer);
-
-          if (i === chunks.length - 1) {
-            writer.on("finish", () => {
-              message.reply({
-                body: text,
-                attachment: fs.createReadStream(path)
-              }, () => {
-                fs.remove(path);
-              });
-            });
-          }
-        }
-      }
-    } catch (err) {
-      console.error(err);
-      message.reply("An error occurred while trying to convert your text to speech or send it as an attachment. Please try again later.");
+      const url = `https://azadx69x.is-a.dev/api/voice-tts?text=${encodeURIComponent(text)}&voice=${encodeURIComponent(v)}&language=${encodeURIComponent(l)}&format=${encodeURIComponent(fmt)}`;
+      const res = await axios.get(url, { responseType: "arraybuffer", timeout: 30000 });
+      const file = path.join(os.tmpdir(), `tts_${Date.now()}.mp3`);
+      fs.writeFileSync(file, Buffer.from(res.data));
+      await message.reply({ body: "✅ Done!", attachment: fs.createReadStream(file) });
+      setTimeout(() => { if (fs.existsSync(file)) fs.unlinkSync(file); }, 10000);
+    } catch (e) { message.reply(`❌ ${e.message}`); }
+  },
+  onChat: async function({ message, event, args }) {
+    if (event.messageReply && args[0]?.toLowerCase() === "say") {
+      const txt = event.messageReply.body;
+      if (!txt) return;
+      const voice = ["boys", "girls"][Math.floor(Math.random() * 2)];
+      try {
+        const url = `https://azadx69x.is-a.dev/api/voice-tts?text=${encodeURIComponent(txt)}&voice=${encodeURIComponent(voice)}&language=bn-BD&format=mp3`;
+        const res = await axios.get(url, { responseType: "arraybuffer", timeout: 30000 });
+        const file = path.join(os.tmpdir(), `tts_${Date.now()}.mp3`);
+        fs.writeFileSync(file, Buffer.from(res.data));
+        await message.reply({ body: `🎲 Random Voice: ${voice}`, attachment: fs.createReadStream(file) });
+        setTimeout(() => { if (fs.existsSync(file)) fs.unlinkSync(file); }, 10000);
+      } catch (e) { message.reply(`❌ ${e.message}`); }
     }
   }
 };
