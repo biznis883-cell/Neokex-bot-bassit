@@ -1,186 +1,234 @@
-const os = require("os");
-const path = require("path");
 const fs = require("fs");
-const { createCanvas } = require("canvas");
-
-process.stderr.clearLine = process.stderr.clearLine || function () {};
-process.stdout.clearLine = process.stdout.clearLine || function () {};
+const path = require("path");
+const { createCanvas, loadImage } = require("canvas");
 
 module.exports = {
-  config: {
-    name: "uptime",
-    aliases: ["runtime", "up"],
-    version: "1.10",
-    author: "NZ R",
-    countDown: 5,
-    role: 0,
-    shortDescription: { en: "Check system uptime and status with image" },
-    longDescription: { en: "Displays the system uptime, RAM usage, CPU load, and other server details on an image." },
-    category: "SYSTEM",
-    guide: { en: "{pn}" }
-  },
+	config: {
+		name: "uptime",
+		aliases: ["up", "runtime"],
+		version: "2.0",
+		author: "Ismail Meddah",
+		countDown: 5,
+		role: 0,
+		shortDescription: {
+			en: "Show bot uptime"
+		},
+		longDescription: {
+			en: "Show the bot uptime on the uptime card."
+		},
+		category: "system",
+		guide: {
+			en: "{pn}"
+		}
+	},
 
-  onStart: async function ({ api, event }) {
-    const { threadID, messageID } = event;
-    const cacheFolderPath = path.join(__dirname, "cache");
-    if (!fs.existsSync(cacheFolderPath)) fs.mkdirSync(cacheFolderPath, { recursive: true });
-    const imagePath = path.join(cacheFolderPath, `uptime_${Date.now()}.png`);
+	onStart: async function ({ api, event }) {
+		const templatePath = path.join(__dirname, "up.png");
+		const outputPath = path.join(
+			__dirname,
+			`uptime_${event.threadID}_${Date.now()}.png`
+		);
 
-    try {
-      api.setMessageReaction("📡", event.messageID, () => {}, true);
+		try {
+			if (!fs.existsSync(templatePath)) {
+				return api.sendMessage(
+					"𝙐𝙥𝙩𝙞𝙢𝙚 𝙘𝙖𝙧𝙙 𝙬𝙖𝙨 𝙣𝙤𝙩 𝙛𝙤𝙪𝙣𝙙.\n\n𝙋𝙡𝙚𝙖𝙨𝙚 𝙥𝙡𝙖𝙘𝙚 𝙪𝙥.𝙥𝙣𝙜 𝙞𝙣 𝙩𝙝𝙚 𝙨𝙖𝙢𝙚 𝙛𝙤𝙡𝙙𝙚𝙧.",
+					event.threadID
+				);
+			}
 
-      const uptime = process.uptime();
-      const days = Math.floor(uptime / 86400);
-      const hours = Math.floor((uptime % 86400) / 3600);
-      const minutes = Math.floor((uptime % 3600) / 60);
-      const seconds = Math.floor(uptime % 60);
-      const uptimeString = `${days}d ${hours}h ${minutes}m ${seconds}s`;
+			api.setMessageReaction(
+				"📡",
+				event.messageID,
+				() => {},
+				true
+			);
 
-      const totalMem = os.totalmem();
-      const freeMem = os.freemem();
-      const usedMem = totalMem - freeMem;
-      const usedGB = (usedMem / 1024 / 1024 / 1024).toFixed(2);
-      const totalGB = (totalMem / 1024 / 1024 / 1024).toFixed(2);
+			// =========================
+			// CALCULATE BOT UPTIME
+			// =========================
 
-      const cpus = os.cpus();
-      let totalIdle = 0, totalTick = 0;
-      cpus.forEach(cpu => {
-        for (const type in cpu.times) totalTick += cpu.times[type];
-        totalIdle += cpu.times.idle;
-      });
-      const avgCpuLoad = ((1 - totalIdle / totalTick) * 100).toFixed(2);
+			const uptime = process.uptime();
 
-      const ping = Date.now() - event.timestamp;
-      const platform = `${os.platform()} (${os.arch()})`;
-      const nodeVersion = process.version;
-      const hostname = os.hostname();
+			const days = Math.floor(uptime / 86400);
+			const hours = Math.floor((uptime % 86400) / 3600);
+			const minutes = Math.floor((uptime % 3600) / 60);
+			const seconds = Math.floor(uptime % 60);
 
-      const info = [
-        { label: "Uptime", value: uptimeString },
-        { label: "Ping", value: `${ping} ms` },
-        { label: "RAM Usage", value: `${usedGB} GB / ${totalGB} GB` },
-        { label: "CPU Load", value: `${avgCpuLoad}%` },
-        { label: "Platform", value: platform },
-        { label: "Node.js", value: nodeVersion },
-        { label: "Hostname", value: hostname }
-      ];
+			const uptimeText =
+				`${days}d ${hours}h ${minutes}m ${seconds}s`;
 
-      const width = 1400;
-      const height = 800;
-      const canvas = createCanvas(width, height);
-      const ctx = canvas.getContext('2d');
+			// Short version for the lower card
+			const shortUptime =
+				`${days}d ${hours}h ${minutes}m`;
 
-      const gradient = ctx.createLinearGradient(0, 0, width, height);
-      gradient.addColorStop(0, '#181825');
-      gradient.addColorStop(1, '#0a0a10');
-      
-      const rx = 60, ry = 60;
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.moveTo(rx, 0);
-      ctx.lineTo(width - rx, 0);
-      ctx.quadraticCurveTo(width, 0, width, ry);
-      ctx.lineTo(width, height - ry);
-      ctx.quadraticCurveTo(width, height, width - rx, height);
-      ctx.lineTo(rx, height);
-      ctx.quadraticCurveTo(0, height, 0, height - ry);
-      ctx.lineTo(0, ry);
-      ctx.quadraticCurveTo(0, 0, rx, 0);
-      ctx.closePath();
-      ctx.fill();
+			// =========================
+			// LOAD TEMPLATE
+			// =========================
 
-      const infoBoxWidth = 1260;
-      const infoBoxHeight = 610;
-      const infoBoxX = (width - infoBoxWidth) / 2;
-      const infoBoxY = (height - infoBoxHeight) / 2;
-      const infoBoxRx = 70, infoBoxRy = 70;
+			const image = await loadImage(templatePath);
 
-      ctx.shadowColor = 'rgba(44, 39, 66, 0.8)';
-      ctx.shadowBlur = 8;
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 5;
+			const canvas = createCanvas(
+				image.width,
+				image.height
+			);
 
-      ctx.fillStyle = 'rgba(21, 21, 32, 0.98)';
-      ctx.beginPath();
-      ctx.moveTo(infoBoxX + infoBoxRx, infoBoxY);
-      ctx.lineTo(infoBoxX + infoBoxWidth - infoBoxRx, infoBoxY);
-      ctx.quadraticCurveTo(infoBoxX + infoBoxWidth, infoBoxY, infoBoxX + infoBoxWidth, infoBoxY + infoBoxRy);
-      ctx.lineTo(infoBoxX + infoBoxWidth, infoBoxY + infoBoxHeight - infoBoxRy);
-      ctx.quadraticCurveTo(infoBoxX + infoBoxWidth, infoBoxY + infoBoxHeight, infoBoxX + infoBoxWidth - infoBoxRx, infoBoxY + infoBoxHeight);
-      ctx.lineTo(infoBoxX + infoBoxRx, infoBoxY + infoBoxHeight);
-      ctx.quadraticCurveTo(infoBoxX, infoBoxY + infoBoxHeight, infoBoxX, infoBoxY + infoBoxHeight - infoBoxRy);
-      ctx.lineTo(infoBoxX, infoBoxY + infoBoxRy);
-      ctx.quadraticCurveTo(infoBoxX, infoBoxY, infoBoxX + infoBoxRx, infoBoxY);
-      ctx.closePath();
-      ctx.fill();
+			const ctx = canvas.getContext("2d");
 
-      ctx.shadowColor = 'transparent';
-      ctx.shadowBlur = 0;
+			ctx.drawImage(
+				image,
+				0,
+				0,
+				image.width,
+				image.height
+			);
 
-      const centerX = width / 2;
-      const centerY = height / 2;
-      
-      const radialGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 160);
-      radialGradient.addColorStop(0, 'rgba(139, 92, 246, 0.4)');
-      radialGradient.addColorStop(0.7, 'rgba(139, 92, 246, 0)');
-      radialGradient.addColorStop(1, 'transparent'); 
-      
-      ctx.fillStyle = radialGradient;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, 160, 0, Math.PI * 2);
-      ctx.fill();
+			// =========================
+			// MAIN UPTIME NUMBER
+			// =========================
 
-      ctx.strokeStyle = 'rgba(139, 92, 246, 0.6)';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, 130, 0, Math.PI * 2);
-      ctx.stroke();
+			const mainX = 850;
 
-      ctx.strokeStyle = 'rgba(167, 139, 250, 0.4)';
-      ctx.lineWidth = 1.8;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, 100, 0, Math.PI * 2);
-      ctx.stroke();
+			// This is the main empty UPTIME area.
+			// The text is centered here.
+			const mainY = 525;
 
-      ctx.font = '500 40px sans-serif';
-      
-      const startY = infoBoxY + 120;
+			const maxWidth = 680;
 
-      info.forEach((item, i) => {
-        const yPos = startY + i * 75;
+			let fontSize = 78;
 
-        ctx.fillStyle = '#d1c4e9';
-        ctx.textAlign = 'left';
-        ctx.fillText(item.label, 160, yPos);
+			ctx.textAlign = "center";
+			ctx.textBaseline = "middle";
 
-        ctx.fillStyle = '#e0e0f4';
-        ctx.fillText(item.value, 600, yPos);
+			// Automatically reduce font size
+			// if uptime becomes very long.
+			while (fontSize > 38) {
+				ctx.font = `bold ${fontSize}px sans-serif`;
 
-        ctx.strokeStyle = 'rgba(139, 92, 246, 0.15)';
-        ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        ctx.moveTo(160, yPos + 28);
-        ctx.lineTo(1240, yPos + 28);
-        ctx.stroke();
-      });
+				const width = ctx.measureText(
+					uptimeText
+				).width;
 
-      const out = fs.createWriteStream(imagePath);
-      const stream = canvas.createPNGStream();
-      stream.pipe(out);
+				if (width <= maxWidth) {
+					break;
+				}
 
-      out.on('finish', () => {
-        api.setMessageReaction("✅", event.messageID, () => {}, true);
-        api.sendMessage({ attachment: fs.createReadStream(imagePath) }, threadID, (err) => {
-          if (!err) fs.unlink(imagePath, () => {});
-          else {
-            if (fs.existsSync(imagePath)) fs.unlink(imagePath, () => {});
-          }
-        }, messageID);
-      });
+				fontSize -= 2;
+			}
 
-    } catch (error) {
-      api.setMessageReaction("❌", event.messageID, () => {}, true);
-      if (fs.existsSync(imagePath)) fs.unlink(imagePath, () => {});
-    }
-  }
+			// Text shadow
+			ctx.shadowColor = "rgba(255, 0, 255, 0.65)";
+			ctx.shadowBlur = 18;
+
+			// Main uptime color
+			ctx.fillStyle = "#ffffff";
+
+			ctx.fillText(
+				uptimeText,
+				mainX,
+				mainY
+			);
+
+			// Remove shadow
+			ctx.shadowBlur = 0;
+
+			// =========================
+			// TOTAL UPTIME BOX
+			// =========================
+
+			const totalX = 260;
+			const totalY = 770;
+
+			let smallFontSize = 38;
+
+			while (smallFontSize > 24) {
+				ctx.font = `bold ${smallFontSize}px sans-serif`;
+
+				const width = ctx.measureText(
+					shortUptime
+				).width;
+
+				if (width <= 300) {
+					break;
+				}
+
+				smallFontSize -= 2;
+			}
+
+			ctx.textAlign = "center";
+			ctx.textBaseline = "middle";
+			ctx.fillStyle = "#ffffff";
+
+			ctx.shadowColor = "rgba(255, 0, 255, 0.45)";
+			ctx.shadowBlur = 10;
+
+			ctx.fillText(
+				shortUptime,
+				totalX,
+				totalY
+			);
+
+			ctx.shadowBlur = 0;
+
+			// =========================
+			// SAVE IMAGE
+			// =========================
+
+			const output = fs.createWriteStream(outputPath);
+			const stream = canvas.createPNGStream();
+
+			stream.pipe(output);
+
+			output.on("finish", () => {
+				api.setMessageReaction(
+					"✅",
+					event.messageID,
+					() => {},
+					true
+				);
+
+				api.sendMessage(
+					{
+						attachment: fs.createReadStream(outputPath)
+					},
+					event.threadID,
+					(err) => {
+						if (fs.existsSync(outputPath)) {
+							fs.unlinkSync(outputPath);
+						}
+
+						if (err) {
+							console.error(
+								"[UPTIME SEND ERROR]",
+								err
+							);
+						}
+					},
+					event.messageID
+				);
+			});
+
+		} catch (error) {
+			console.error(
+				"[UPTIME ERROR]",
+				error
+			);
+
+			if (fs.existsSync(outputPath)) {
+				fs.unlinkSync(outputPath);
+			}
+
+			api.setMessageReaction(
+				"❌",
+				event.messageID,
+				() => {},
+				true
+			);
+
+			return api.sendMessage(
+				"𝙁𝙖𝙞𝙡𝙚𝙙 𝙩𝙤 𝙜𝙚𝙣𝙚𝙧𝙖𝙩𝙚 𝙩𝙝𝙚 𝙪𝙥𝙩𝙞𝙢𝙚 𝙘𝙖𝙧𝙙.",
+				event.threadID
+			);
+		}
+	}
 };
