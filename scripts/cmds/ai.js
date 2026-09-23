@@ -1,495 +1,263 @@
-const axios = require("axios");
-const fs = require("fs-extra");
-const path = require("path");
+const axios = require('axios');
+const validUrl = require('valid-url');
+const fs = require('fs');
+const path = require('path');
+const { v4: uuidv4 } = require('uuid');
 
-const BASE_URL = "https://meta.nkx.lol";
+const API_ENDPOINT = "https://hanjiai.vercel.app/chat";
+const CLEAR_ENDPOINT = "https://hanjiai.vercel.app/chat/clear";
+const TMP_DIR = path.join(__dirname, 'tmp');
 
-const DATA_DIR = path.join(__dirname, "data");
-const CONV_FILE = path.join(DATA_DIR, "aiConversations.json");
+if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR);
 
-const conversations = {};
-
-/*
- * Available AI models
- * Change the model names if your API uses different names.
- */
-const MODELS = {
-	gpt: "gpt-5.5",
-	claude: "claude-opus-5.5",
-	gemini: "gemini-3.1-pro"
+const downloadFile = async (url, ext) => {
+  const filePath = path.join(TMP_DIR, `${uuidv4()}.${ext}`);
+  const response = await axios.get(url, { responseType: 'arraybuffer' });
+  fs.writeFileSync(filePath, Buffer.from(response.data));
+  return filePath;
 };
 
-// ==============================
-// LOAD CONVERSATIONS
-// ==============================
+const resetConversation = async (api, event, message) => {
+  api.setMessageReaction("♻️", event.messageID, () => {}, true);
 
-function loadConversations() {
-	try {
-		fs.ensureDirSync(DATA_DIR);
+  try {
+    await axios.delete(`${CLEAR_ENDPOINT}/${event.senderID}`);
+    return message.reply(`✅ Conversation reset for UID: ${event.senderID}`);
+  } catch (error) {
+    console.error('❌ Reset Error:', error.message);
+    return message.reply("❌ Reset failed. Try again.");
+  }
+};
 
-		if (!fs.existsSync(CONV_FILE)) {
-			fs.writeJsonSync(CONV_FILE, {});
-			return;
-		}
+const handleAIRequest = async (
+  api,
+  event,
+  userInput,
+  message,
+  isReply = false
+) => {
+  const userId = event.senderID;
+  let messageContent = userInput;
+  let imageUrl = null;
 
-		const data = fs.readJsonSync(CONV_FILE);
+  api.setMessageReaction("⏳", event.messageID, () => {}, true);
 
-		if (data && typeof data === "object") {
-			Object.assign(conversations, data);
-		}
-	} catch (error) {
-		console.error("[AI] Load error:", error);
-	}
-}
+  if (event.messageReply) {
+    const replyData = event.messageReply;
 
-function saveConversations() {
-	try {
-		fs.ensureDirSync(DATA_DIR);
+    if (
+      replyData.senderID !== global.GoatBot?.botID &&
+      replyData.body
+    ) {
+      const trimmedReply =
+        replyData.body.length > 300
+          ? replyData.body.slice(0, 300) + "..."
+          : replyData.body;
 
-		fs.writeJsonSync(
-			CONV_FILE,
-			conversations,
-			{ spaces: 2 }
-		);
-	} catch (error) {
-		console.error("[AI] Save error:", error);
-	}
-}
+      messageContent += `\n\n📌 Reply:\n"${trimmedReply}"`;
+    }
 
-loadConversations();
+    const attachment = replyData.attachments?.[0];
 
-// ==============================
-// EXTRACT TEXT
-// ==============================
+    if (attachment?.type === 'photo') {
+      imageUrl = attachment.url;
+    }
+  }
 
-function extractText(data) {
-	if (!data)
-		return null;
+  const urlMatch = messageContent.match(/(https?:\/\/[^\s]+)/)?.[0];
 
-	if (typeof data === "string")
-		return data.trim();
+  if (urlMatch && validUrl.isWebUri(urlMatch)) {
+    imageUrl = urlMatch;
+    messageContent = messageContent.replace(urlMatch, '').trim();
+  }
 
-	const keys = [
-		"reply",
-		"response",
-		"message",
-		"content",
-		"answer",
-		"output",
-		"text",
-		"result"
-	];
+  if (!messageContent && !imageUrl) {
+    api.setMessageReaction(
+      "❌",
+      event.messageID,
+      () => {},
+      true
+    );
 
-	const search = (obj, depth = 0) => {
-		if (!obj || depth > 8)
-			return null;
+    return message.reply("💬 Provide a message or image.");
+  }
 
-		if (typeof obj !== "object")
-			return null;
+  try {
+    const response = await axios.post(
+      API_ENDPOINT,
+      {
+        uid: userId,
+        message: messageContent,
+        image_url: imageUrl
+      },
+      {
+        timeout: 60000
+      }
+    );
 
-		if (Array.isArray(obj)) {
-			for (const item of obj) {
-				const result = search(
-					item,
-					depth + 1
-				);
+    const { reply: textReply, image_url: genImageUrl } = response.data;
 
-				if (result)
-					return result;
-			}
+    let finalReply = textReply || '✅ AI Response:';
 
-			return null;
-		}
+    const attachments = [];
 
-		for (const [key, value] of Object.entries(obj)) {
-			if (
-				keys.includes(
-					String(key).toLowerCase()
-				) &&
-				typeof value === "string" &&
-				value.trim()
-			) {
-				return value.trim();
-			}
+    if (genImageUrl) {
+      try {
+        attachments.push(
+          fs.createReadStream(
+            await downloadFile(genImageUrl, 'jpg')
+          )
+        );
+      } catch {
+        finalReply += '\n🖼️ Image download failed.';
+      }
+    }
 
-			if (
-				value &&
-				typeof value === "object"
-			) {
-				const result = search(
-					value,
-					depth + 1
-				);
+    const sentMessage = await message.reply({
+      body: finalReply,
+      attachment:
+        attachments.length > 0
+          ? attachments
+          : undefined
+    });
 
-				if (result)
-					return result;
-			}
-		}
+    if (sentMessage && sentMessage.messageID) {
+      global.GoatBot.onReply.set(sentMessage.messageID, {
+        commandName: 'ai',
+        messageID: sentMessage.messageID,
+        author: userId
+      });
+    }
 
-		return null;
-	};
+    api.setMessageReaction(
+      "✅",
+      event.messageID,
+      () => {},
+      true
+    );
 
-	return search(data);
-}
+  } catch (error) {
+    console.error(
+      "❌ API Error:",
+      error.response?.data || error.message
+    );
 
-// ==============================
-// EXTRACT CONVERSATION ID
-// ==============================
+    api.setMessageReaction(
+      "❌",
+      event.messageID,
+      () => {},
+      true
+    );
 
-function extractConversationId(data) {
-	if (!data)
-		return null;
+    let errorMessage = "⚠️ AI Error:\n\n";
 
-	const keys = [
-		"conversation_id",
-		"conversationId",
-		"conversationID"
-	];
+    if (
+      error.code === 'ECONNABORTED' ||
+      error.message.includes('timeout')
+    ) {
+      errorMessage += "⏱️ Timeout. Try again.";
 
-	const search = (obj, depth = 0) => {
-		if (!obj || depth > 8)
-			return null;
+    } else if (error.response?.status === 429) {
+      errorMessage += "🚦 Too many requests. Slow down.";
 
-		if (typeof obj !== "object")
-			return null;
+    } else {
+      errorMessage +=
+        "❌ Unexpected error: " +
+        (error.message || 'No details');
+    }
 
-		if (Array.isArray(obj)) {
-			for (const item of obj) {
-				const result = search(
-					item,
-					depth + 1
-				);
-
-				if (result)
-					return result;
-			}
-
-			return null;
-		}
-
-		for (const [key, value] of Object.entries(obj)) {
-			if (
-				keys.includes(String(key))
-			) {
-				return String(value);
-			}
-
-			if (
-				value &&
-				typeof value === "object"
-			) {
-				const result = search(
-					value,
-					depth + 1
-				);
-
-				if (result)
-					return result;
-			}
-		}
-
-		return null;
-	};
-
-	return search(data);
-}
-
-// ==============================
-// CALL AI
-// ==============================
-
-async function askAI(
-	userMessage,
-	conversationId,
-	model
-) {
-	const body = {
-		message: userMessage,
-		model: model,
-		timeout: 60
-	};
-
-	if (conversationId) {
-		body.conversation_id = conversationId;
-		body.new_conversation = false;
-	} else {
-		body.new_conversation = true;
-	}
-
-	return axios.post(
-		`${BASE_URL}/v1/chat`,
-		body,
-		{
-			timeout: 70000,
-			validateStatus: () => true,
-			headers: {
-				"Content-Type":
-					"application/json",
-				"Accept":
-					"application/json"
-			}
-		}
-	);
-}
-
-// ==============================
-// REPLY CHAIN
-// ==============================
-
-function saveReply(
-	info,
-	userID,
-	conversationId,
-	model
-) {
-	if (!info?.messageID)
-		return;
-
-	global.GoatBot.onReply.set(
-		info.messageID,
-		{
-			commandName: "ai",
-			author: userID,
-			conversationId,
-			model
-		}
-	);
-}
-
-// ==============================
-// SEND AI RESPONSE
-// ==============================
-
-async function sendAI({
-	message,
-	event,
-	text,
-	conversationId,
-	model
-}) {
-	try {
-		const response = await askAI(
-			text,
-			conversationId,
-			model
-		);
-
-		if (
-			!response ||
-			response.status >= 400
-		) {
-			console.error(
-				"[AI ERROR]",
-				response?.status,
-				response?.data
-			);
-
-			return message.reply(
-				"𝘼𝙄 𝙨𝙚𝙧𝙫𝙚𝙧 𝙚𝙧𝙧𝙤𝙧."
-			);
-		}
-
-		const reply =
-			extractText(response.data);
-
-		const newConversationId =
-			extractConversationId(
-				response.data
-			) || conversationId;
-
-		if (!reply) {
-			return message.reply(
-				"𝙏𝙝𝙚 𝘼𝙄 𝙙𝙞𝙙 𝙣𝙤𝙩 𝙧𝙚𝙩𝙪𝙧𝙣 𝙖 𝙧𝙚𝙨𝙥𝙤𝙣𝙨𝙚."
-			);
-		}
-
-		if (newConversationId) {
-			conversations[event.threadID] = {
-				id: newConversationId,
-				model
-			};
-
-			saveConversations();
-		}
-
-		return message.reply(
-			reply,
-			(error, info) => {
-				if (error) {
-					console.error(
-						"[AI REPLY ERROR]",
-						error
-					);
-
-					return;
-				}
-
-				saveReply(
-					info,
-					event.senderID,
-					newConversationId,
-					model
-				);
-			}
-		);
-
-	} catch (error) {
-		console.error(
-			"[AI REQUEST ERROR]",
-			error?.response?.data ||
-			error?.message ||
-			error
-		);
-
-		return message.reply(
-			"𝙁𝙖𝙞𝙡𝙚𝙙 𝙩𝙤 𝙘𝙤𝙣𝙣𝙚𝙘𝙩 𝙩𝙤 𝙩𝙝𝙚 𝘼𝙄."
-		);
-	}
-}
-
-// ==============================
-// COMMAND
-// ==============================
+    return message.reply(errorMessage);
+  }
+};
 
 module.exports = {
+  config: {
+    name: 'ai',
+    aliases: [],
+    version: '2.0.0',
+    author: 'Hanji',
+    role: 0,
+    category: 'ai',
 
-	config: {
-		name: "ai",
+    longDescription: {
+      en: 'Advanced AI with image generation and chat'
+    },
 
-		aliases: [
-			"chat",
-			"gpt"
-		],
+    guide: {
+      en: `.ai [your message]
+• 🤖 Chat
+• 🎨 Image
+• 🔄 Reply "clear" to reset conversation
+• 💬 Works in chat: "ai [message]"`
+    }
+  },
 
-		version: "3.0",
+  onStart: async function ({
+    api,
+    event,
+    args,
+    message
+  }) {
+    const userInput = args.join(' ').trim();
 
-		author: "Ismail Meddah",
+    if (!userInput) {
+      return message.reply("❗ Please enter a message.");
+    }
 
-		countDown: 3,
+    if (
+      ['clear', 'reset'].includes(
+        userInput.toLowerCase()
+      )
+    ) {
+      return await resetConversation(
+        api,
+        event,
+        message
+      );
+    }
 
-		role: 0,
+    return await handleAIRequest(
+      api,
+      event,
+      userInput,
+      message
+    );
+  },
 
-		shortDescription: {
-			en: "Multi AI assistant"
-		},
+  onReply: async function ({
+    api,
+    event,
+    Reply,
+    message
+  }) {
+    if (String(event.senderID) !== String(Reply.author)) {
+      return;
+    }
 
-		longDescription: {
-			en:
-				"Chat with multiple AI models and continue conversations by replying."
-		},
+    const userInput = event.body?.trim();
 
-		category: "ai",
+    if (!userInput) {
+      return;
+    }
 
-		guide: {
-			en:
-				"{pn} <message>\n" +
-				"{pn} gpt <message>\n" +
-				"{pn} claude <message>\n" +
-				"{pn} gemini <message>\n" +
-				"{pn} new"
-		}
-	},
+    if (
+      ['clear', 'reset'].includes(
+        userInput.toLowerCase()
+      )
+    ) {
+      return await resetConversation(
+        api,
+        event,
+        message
+      );
+    }
 
-	// ==========================
-	// START
-	// ==========================
-
-	onStart: async function ({
-		message,
-		args,
-		event
-	}) {
-		if (!args.length) {
-			return message.reply(
-				"𝙐𝙨𝙖𝙜𝙚:\n\n" +
-				"𝙖𝙞 𝙜𝙥𝙩 𝙝𝙚𝙡𝙡𝙤\n" +
-				"𝙖𝙞 𝙘𝙡𝙖𝙪𝙙𝙚 𝙝𝙚𝙡𝙡𝙤\n" +
-				"𝙖𝙞 𝙜𝙚𝙢𝙞𝙣𝙞 𝙝𝙚𝙡𝙡𝙤\n\n" +
-				"𝙖𝙞 𝙣𝙚𝙬"
-			);
-		}
-
-		const first =
-			args[0].toLowerCase();
-
-		// NEW CONVERSATION
-		if (first === "new") {
-			delete conversations[
-				event.threadID
-			];
-
-			saveConversations();
-
-			return message.reply(
-				"𝙉𝙚𝙬 𝘼𝙄 𝙘𝙤𝙣𝙫𝙚𝙧𝙨𝙖𝙩𝙞𝙤𝙣 𝙨𝙩𝙖𝙧𝙩𝙚𝙙. 🤖"
-			);
-		}
-
-		let model;
-		let text;
-
-		if (MODELS[first]) {
-			model = MODELS[first];
-			text = args.slice(1).join(" ").trim();
-		} else {
-			model = MODELS.gpt;
-			text = args.join(" ").trim();
-		}
-
-		if (!text) {
-			return message.reply(
-				"𝙋𝙡𝙚𝙖𝙨𝙚 𝙚𝙣𝙩𝙚𝙧 𝙖 𝙢𝙚𝙨𝙨𝙖𝙜𝙚."
-			);
-		}
-
-		const saved =
-			conversations[
-				event.threadID
-			];
-
-		const conversationId =
-			saved?.id || null;
-
-		return sendAI({
-			message,
-			event,
-			text,
-			conversationId,
-			model
-		});
-	},
-
-	// ==========================
-	// REPLY
-	// ==========================
-
-	onReply: async function ({
-		message,
-		event,
-		Reply
-	}) {
-		if (
-			String(event.senderID) !==
-			String(Reply.author)
-		) {
-			return;
-		}
-
-		const text =
-			(event.body || "").trim();
-
-		if (!text)
-			return;
-
-		return sendAI({
-			message,
-			event,
-			text,
-			conversationId:
-				Reply.conversationId,
-			model:
-				Reply.model ||
-				MODELS.gpt
-		});
-	}
+    return await handleAIRequest(
+      api,
+      event,
+      userInput,
+      message,
+      true
+    );
+  }
 };
