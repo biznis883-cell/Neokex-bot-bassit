@@ -6,7 +6,7 @@ module.exports = {
 	config: {
 		name: "uptime",
 		aliases: ["up", "runtime"],
-		version: "2.0",
+		version: "2.1",
 		author: "Ismail Meddah",
 		countDown: 5,
 		role: 0,
@@ -23,16 +23,20 @@ module.exports = {
 	},
 
 	onStart: async function ({ api, event }) {
-		const templatePath = path.join(__dirname, "up.png");
+		const templatePath = path.join(
+			__dirname,
+			"file_0000000097648243b1697918f32a45c2.png"
+		);
+
 		const outputPath = path.join(
 			__dirname,
-			`uptime_${event.threadID}_${Date.now()}.png`
+			`uptime_${Date.now()}.png`
 		);
 
 		try {
 			if (!fs.existsSync(templatePath)) {
 				return api.sendMessage(
-					"𝙐𝙥𝙩𝙞𝙢𝙚 𝙘𝙖𝙧𝙙 𝙬𝙖𝙨 𝙣𝙤𝙩 𝙛𝙤𝙪𝙣𝙙.\n\n𝙋𝙡𝙚𝙖𝙨𝙚 𝙥𝙡𝙖𝙘𝙚 𝙪𝙥.𝙥𝙣𝙜 𝙞𝙣 𝙩𝙝𝙚 𝙨𝙖𝙢𝙚 𝙛𝙤𝙡𝙙𝙚𝙧.",
+					"𝙐𝙥𝙩𝙞𝙢𝙚 𝙞𝙢𝙖𝙜𝙚 𝙬𝙖𝙨 𝙣𝙤𝙩 𝙛𝙤𝙪𝙣𝙙.",
 					event.threadID
 				);
 			}
@@ -45,7 +49,7 @@ module.exports = {
 			);
 
 			// =========================
-			// CALCULATE BOT UPTIME
+			// BOT UPTIME
 			// =========================
 
 			const uptime = process.uptime();
@@ -58,12 +62,11 @@ module.exports = {
 			const uptimeText =
 				`${days}d ${hours}h ${minutes}m ${seconds}s`;
 
-			// Short version for the lower card
 			const shortUptime =
 				`${days}d ${hours}h ${minutes}m`;
 
 			// =========================
-			// LOAD TEMPLATE
+			// LOAD IMAGE
 			// =========================
 
 			const image = await loadImage(templatePath);
@@ -84,43 +87,34 @@ module.exports = {
 			);
 
 			// =========================
-			// MAIN UPTIME NUMBER
+			// MAIN UPTIME
 			// =========================
 
 			const mainX = 850;
+			const mainY = 510;
+			const maxWidth = 650;
 
-			// This is the main empty UPTIME area.
-			// The text is centered here.
-			const mainY = 525;
-
-			const maxWidth = 680;
-
-			let fontSize = 78;
+			let fontSize = 82;
 
 			ctx.textAlign = "center";
 			ctx.textBaseline = "middle";
 
-			// Automatically reduce font size
-			// if uptime becomes very long.
-			while (fontSize > 38) {
-				ctx.font = `bold ${fontSize}px sans-serif`;
+			while (fontSize > 35) {
+				ctx.font = `bold ${fontSize}px Arial`;
 
-				const width = ctx.measureText(
-					uptimeText
-				).width;
-
-				if (width <= maxWidth) {
+				if (
+					ctx.measureText(uptimeText).width <= maxWidth
+				) {
 					break;
 				}
 
 				fontSize -= 2;
 			}
 
-			// Text shadow
-			ctx.shadowColor = "rgba(255, 0, 255, 0.65)";
+			// Glow
+			ctx.shadowColor = "#ff00ff";
 			ctx.shadowBlur = 18;
 
-			// Main uptime color
 			ctx.fillStyle = "#ffffff";
 
 			ctx.fillText(
@@ -129,26 +123,23 @@ module.exports = {
 				mainY
 			);
 
-			// Remove shadow
 			ctx.shadowBlur = 0;
 
 			// =========================
-			// TOTAL UPTIME BOX
+			// TOTAL UPTIME
 			// =========================
 
 			const totalX = 260;
-			const totalY = 770;
+			const totalY = 870;
 
 			let smallFontSize = 38;
 
-			while (smallFontSize > 24) {
-				ctx.font = `bold ${smallFontSize}px sans-serif`;
+			while (smallFontSize > 22) {
+				ctx.font = `bold ${smallFontSize}px Arial`;
 
-				const width = ctx.measureText(
-					shortUptime
-				).width;
-
-				if (width <= 300) {
+				if (
+					ctx.measureText(shortUptime).width <= 300
+				) {
 					break;
 				}
 
@@ -159,7 +150,7 @@ module.exports = {
 			ctx.textBaseline = "middle";
 			ctx.fillStyle = "#ffffff";
 
-			ctx.shadowColor = "rgba(255, 0, 255, 0.45)";
+			ctx.shadowColor = "#ff00ff";
 			ctx.shadowBlur = 10;
 
 			ctx.fillText(
@@ -174,12 +165,16 @@ module.exports = {
 			// SAVE IMAGE
 			// =========================
 
-			const output = fs.createWriteStream(outputPath);
+			const output = fs.createWriteStream(
+				outputPath
+			);
+
 			const stream = canvas.createPNGStream();
 
 			stream.pipe(output);
 
 			output.on("finish", () => {
+
 				api.setMessageReaction(
 					"✅",
 					event.messageID,
@@ -189,10 +184,13 @@ module.exports = {
 
 				api.sendMessage(
 					{
-						attachment: fs.createReadStream(outputPath)
+						attachment: fs.createReadStream(
+							outputPath
+						)
 					},
 					event.threadID,
 					(err) => {
+
 						if (fs.existsSync(outputPath)) {
 							fs.unlinkSync(outputPath);
 						}
@@ -209,6 +207,7 @@ module.exports = {
 			});
 
 		} catch (error) {
+
 			console.error(
 				"[UPTIME ERROR]",
 				error
