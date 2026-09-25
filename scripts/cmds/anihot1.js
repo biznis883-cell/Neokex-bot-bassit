@@ -6,128 +6,236 @@ const { createCanvas, loadImage } = require("canvas");
 module.exports = {
   config: {
     name: "anihot1",
-    version: "1.0",
+    version: "2.0",
     author: "Bassit",
     countDown: 5,
     role: 0,
-    category: "fun"
+    category: "fun",
+    guide: {
+      en: "Reply to someone's message and type: anihot1"
+    }
   },
 
   onStart: async function ({ message, event, usersData }) {
-    // لازم تكون راد على رسالة شخص
+
     if (!event.messageReply) {
       return message.reply(
-        "❌ Reply to someone's message first.\n\nExample:\nanihot1"
+        "❌ Reply to someone's message first.\n\n" +
+        "Example:\nanihot1"
       );
     }
 
-    const targetID = event.messageReply.senderID;
     const myID = event.senderID;
+    const targetID = event.messageReply.senderID;
 
+    // الصورة الأصلية من Postimages
     const templateURL =
       "https://i.postimg.cc/k7VGPgCd/Screenshot-20260925-144204.jpg";
 
     const cacheDir = path.join(__dirname, "cache");
     await fs.ensureDir(cacheDir);
 
-    const templatePath = path.join(cacheDir, "anihot1-template.jpg");
-    const myAvatarPath = path.join(cacheDir, `anihot1-my-${myID}.jpg`);
+    const templatePath = path.join(
+      cacheDir,
+      "anihot1-template.jpg"
+    );
+
+    const myAvatarPath = path.join(
+      cacheDir,
+      `anihot1-my-${myID}.jpg`
+    );
+
     const targetAvatarPath = path.join(
       cacheDir,
       `anihot1-target-${targetID}.jpg`
     );
-    const outputPath = path.join(cacheDir, "anihot1-result.jpg");
+
+    const outputPath = path.join(
+      cacheDir,
+      `anihot1-result-${Date.now()}.jpg`
+    );
 
     try {
-      // تحميل الصورة الأساسية من Postimages
-      const template = await axios.get(templateURL, {
-        responseType: "arraybuffer"
-      });
 
-      await fs.writeFile(templatePath, template.data);
+      // تحميل الصورة الأصلية
+      const template = await axios.get(
+        templateURL,
+        {
+          responseType: "arraybuffer",
+          timeout: 30000
+        }
+      );
 
+      await fs.writeFile(
+        templatePath,
+        template.data
+      );
+
+      // ==============================
       // جلب صور البروفايل
-      const myAvatarURL = await usersData.getAvatarUrl(myID);
-      const targetAvatarURL = await usersData.getAvatarUrl(targetID);
+      // ==============================
+
+      const myAvatarURL =
+        await usersData.getAvatarUrl(myID);
+
+      const targetAvatarURL =
+        await usersData.getAvatarUrl(targetID);
 
       if (!myAvatarURL || !targetAvatarURL) {
-        return message.reply("❌ Couldn't get the profile pictures.");
+        return message.reply(
+          "❌ Couldn't get both profile pictures."
+        );
       }
 
-      const [myAvatar, targetAvatar] = await Promise.all([
-        axios.get(myAvatarURL, { responseType: "arraybuffer" }),
-        axios.get(targetAvatarURL, { responseType: "arraybuffer" })
-      ]);
+      const [myAvatar, targetAvatar] =
+        await Promise.all([
+          axios.get(myAvatarURL, {
+            responseType: "arraybuffer",
+            timeout: 30000
+          }),
 
-      await fs.writeFile(myAvatarPath, myAvatar.data);
-      await fs.writeFile(targetAvatarPath, targetAvatar.data);
+          axios.get(targetAvatarURL, {
+            responseType: "arraybuffer",
+            timeout: 30000
+          })
+        ]);
 
+      await fs.writeFile(
+        myAvatarPath,
+        myAvatar.data
+      );
+
+      await fs.writeFile(
+        targetAvatarPath,
+        targetAvatar.data
+      );
+
+      // ==============================
       // فتح الصور
-      const base = await loadImage(templatePath);
-      const me = await loadImage(myAvatarPath);
-      const target = await loadImage(targetAvatarPath);
+      // ==============================
 
-      const canvas = createCanvas(base.width, base.height);
-      const ctx = canvas.getContext("2d");
+      const base =
+        await loadImage(templatePath);
+
+      const myPhoto =
+        await loadImage(myAvatarPath);
+
+      const targetPhoto =
+        await loadImage(targetAvatarPath);
+
+      const canvas =
+        createCanvas(
+          base.width,
+          base.height
+        );
+
+      const ctx =
+        canvas.getContext("2d");
 
       // الصورة الأصلية
-      ctx.drawImage(base, 0, 0);
+      ctx.drawImage(
+        base,
+        0,
+        0,
+        base.width,
+        base.height
+      );
 
       /*
-       * أماكن صور البروفايل
-       *
-       * صورة العضو = فوق رأس الفتاة
-       * صورة المرسل = فوق رأس الولد
+       * =================================
+       * الولد = صورتك أنت
+       * =================================
        */
 
-      const targetSize = 115;
-      const mySize = 115;
-
-      // صورة العضو فوق الفتاة
-      drawCircleImage(
+      drawAvatar(
         ctx,
-        target,
-        390,
-        205,
-        targetSize
+        myPhoto,
+
+        // X
+        760,
+
+        // Y
+        70,
+
+        // الحجم
+        210
       );
 
-      // صورتك فوق الولد
-      drawCircleImage(
+      /*
+       * =================================
+       * البنت = صورة الشخص اللي رديتي عليه
+       * =================================
+       */
+
+      drawAvatar(
         ctx,
-        me,
-        935,
-        175,
-        mySize
+        targetPhoto,
+
+        // X
+        285,
+
+        // Y
+        110,
+
+        // الحجم
+        210
       );
 
+      // ==============================
       // حفظ النتيجة
-      const buffer = canvas.toBuffer("image/jpeg", {
-        quality: 0.95
-      });
+      // ==============================
 
-      await fs.writeFile(outputPath, buffer);
+      const buffer =
+        canvas.toBuffer(
+          "image/jpeg",
+          {
+            quality: 0.95
+          }
+        );
 
+      await fs.writeFile(
+        outputPath,
+        buffer
+      );
+
+      // إرسال الصورة
       return message.reply({
-        attachment: fs.createReadStream(outputPath)
+        attachment:
+          fs.createReadStream(outputPath)
       });
 
     } catch (error) {
-      console.error(error);
+
+      console.error(
+        "ANIHOT1 ERROR:",
+        error
+      );
 
       return message.reply(
-        "❌ An error occurred while creating the image."
+        "❌ Failed to create the image."
       );
     }
   }
 };
 
 
-// رسم صورة بروفايل دائرية
-function drawCircleImage(ctx, image, x, y, size) {
+// =======================================
+// رسم صورة البروفايل بشكل دائري
+// =======================================
+
+function drawAvatar(
+  ctx,
+  image,
+  x,
+  y,
+  size
+) {
+
   ctx.save();
 
+  // الدائرة
   ctx.beginPath();
+
   ctx.arc(
     x + size / 2,
     y + size / 2,
@@ -135,20 +243,28 @@ function drawCircleImage(ctx, image, x, y, size) {
     0,
     Math.PI * 2
   );
+
   ctx.closePath();
+
   ctx.clip();
 
-  // قص الصورة بشكل مربع ثم داخل الدائرة
+  // جعل الصورة تغطي الدائرة كاملة
   const scale = Math.max(
     size / image.width,
     size / image.height
   );
 
-  const width = image.width * scale;
-  const height = image.height * scale;
+  const width =
+    image.width * scale;
 
-  const dx = x + (size - width) / 2;
-  const dy = y + (size - height) / 2;
+  const height =
+    image.height * scale;
+
+  const dx =
+    x + (size - width) / 2;
+
+  const dy =
+    y + (size - height) / 2;
 
   ctx.drawImage(
     image,
@@ -160,10 +276,11 @@ function drawCircleImage(ctx, image, x, y, size) {
 
   ctx.restore();
 
-  // إطار أبيض خفيف
+  // الإطار الأبيض
   ctx.save();
 
   ctx.beginPath();
+
   ctx.arc(
     x + size / 2,
     y + size / 2,
@@ -172,8 +289,9 @@ function drawCircleImage(ctx, image, x, y, size) {
     Math.PI * 2
   );
 
-  ctx.lineWidth = 5;
+  ctx.lineWidth = 7;
   ctx.strokeStyle = "#ffffff";
+
   ctx.stroke();
 
   ctx.restore();
