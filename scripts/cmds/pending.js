@@ -1,151 +1,82 @@
-const axios = require("axios");
-const fs = require("fs");
-
 module.exports = {
-  config: {
-    name: "pending",
-    aliases: ["pen", "pend", "pe"],
-    version: "4.0.0",
-    author: "Toshiro Editz",
-    countDown: 5,
-    role: 1,
-    shortDescription: "Show new pending groups & auto clean dead threads",
-    longDescription: "Approve pending groups/users with auto-remove invalid threads and auto-refresh",
-    category: "utility",
-  },
+ config: {
+ name: "pending",
+ aliases: [`pen`],
+ version: "1.0",
+ author: "Rômeo",//cmd modified by Aryan Chauhan don't change my author name
+ countDown: 0,
+ role: 2,
+ shortDescription: {
+ vi: "",
+ en: ""
+ },
+ longDescription: {
+ vi: "",
+ en: ""
+ },
+ category: "owner"
+ },
 
-  // Auto Clean Function
-  filterValidThreads: async function (list, api) {
-    const valid = [];
-    for (const thread of list) {
-      try {
-        await api.getThreadInfo(thread.threadID);
-        valid.push(thread);
-      } catch (e) {
-        console.log("[AUTO-CLEAN] Removed invalid thread:", thread.threadID);
-      }
-    }
-    return valid;
-  },
+langs: {
+ en: {
+ invaildNumber: "𝗜𝗡𝗩𝗔𝗟𝗘𝗗 𝗜𝗡𝗣𝗨𝗧:\n━━━━━━━━━━━━━━━\n%1 is not an invalid number",
+ cancelSuccess: "𝗖𝗔𝗡𝗖𝗘𝗟 𝗥𝗘𝗤𝗨𝗘𝗦𝗧:\n━━━━━━━━━━━━━━━\nRefused %1 thread!",
+ approveSuccess: "𝗔𝗣𝗣𝗥𝗢𝗩𝗘𝗗 𝗚𝗖:\n━━━━━━━━━━━━━━━\nApproved successfully %1 threads!",
 
-  fetchPendingList: async function(api, usersData, type) {
-    let list = await api.getThreadList(200, null, ["PENDING"]) || [];
-    list = await this.filterValidThreads(list, api);
+ cantGetPendingList: "Can't get the pending list!",
+ returnListPending: "»「𝗣𝗘𝗡𝗗𝗜𝗡𝗚 𝗚𝗖」\n━━━━━━━━━━━━━━━\n✅ ❮ The whole number of threads to approve is: %1 thread ❯\n\n%2",
+ returnListClean: "「𝗣𝗘𝗡𝗗𝗜𝗡𝗚 𝗚𝗖」\n━━━━━━━━━━━━━━━\n❌ There is no thread in the pending list"
+ }
+ },
 
-    let filteredList = [];
-    if (type.startsWith("u")) filteredList = list.filter(t => !t.isGroup);
-    if (type.startsWith("t")) filteredList = list.filter(t => t.isGroup);
-    if (type === "all") filteredList = list;
+onReply: async function({ api, event, Reply, getLang, commandName, prefix }) {
+ if (String(event.senderID) !== String(Reply.author)) return;
+ const { body, threadID, messageID } = event;
+ var count = 0;
 
-    return filteredList;
-  },
+ if (isNaN(body) && body.indexOf("c") == 0 || body.indexOf("cancel") == 0) {
+ const index = (body.slice(1, body.length)).split(/\s+/);
+ for (const singleIndex of index) {
+ console.log(singleIndex);
+ if (isNaN(singleIndex) || singleIndex <= 0 || singleIndex > Reply.pending.length) return api.sendMessage(getLang("invaildNumber", singleIndex), threadID, messageID);
+ api.removeUserFromGroup(api.getCurrentUserID(), Reply.pending[singleIndex - 1].threadID);
+ count+=1;
+ }
+ return api.sendMessage(getLang("cancelSuccess", count), threadID, messageID);
+ }
+ else {
+ const index = body.split(/\s+/);
+ for (const singleIndex of index) {
+ if (isNaN(singleIndex) || singleIndex <= 0 || singleIndex > Reply.pending.length) return api.sendMessage(getLang("invaildNumber", singleIndex), threadID, messageID);
+ api.sendMessage(`✅𝗖𝗢𝗡𝗡𝗘𝗖𝗧𝗘𝗗 𝗕𝗢𝗧\n━━━━━━━━━━━━━━━\n🎀 hedgehog🩶BOT has been successfully connected 🫂🤍:\n\n📍 Type ${prefix}sonicgc to enter the Messenger group 🙂🤍\n\n👉 Type ${prefix}commands to display the bot commands🫂🌝🤍`, Reply.pending[singleIndex - 1].threadID);
+ count+=1;
+ }
+ return api.sendMessage(getLang("approveSuccess", count), threadID, messageID);
+ }
+},
 
-  onReply: async function ({ api, event, Reply }) {
-    const { author, pending, messageID } = Reply;
-    if (String(event.senderID) !== String(author)) return;
+onStart: async function({ api, event, getLang, commandName }) {
+ const { threadID, messageID } = event;
 
-    const input = event.body.trim().toLowerCase();
+ var msg = "", index = 1;
 
-    // Cancel operation
-    if (input === "c") {
-      try {
-        await api.unsendMessage(messageID);
-        return api.sendMessage("❌ Operation canceled.", event.threadID);
-      } catch {
-        return;
-      }
-    }
+ try {
+ var spam = await api.getThreadList(100, null, ["OTHER"]) || [];
+ var pending = await api.getThreadList(100, null, ["PENDING"]) || [];
+ } catch (e) { return api.sendMessage(getLang("cantGetPendingList"), threadID, messageID) }
 
-    const indexes = input.split(/\s+/).map(Number);
-    if (isNaN(indexes[0])) {
-      return api.sendMessage("⚠ Invalid input! Use numbers only.", event.threadID);
-    }
+ const list = [...spam, ...pending].filter(group => group.isSubscribed && group.isGroup);
 
-    let count = 0;
-    for (const idx of indexes) {
-      if (idx <= 0 || idx > pending.length) continue;
-      const group = pending[idx - 1];
+ for (const single of list) msg += `${index++}/ ${single.name}(${single.threadID})\n`;
 
-      try {
-        await api.sendMessage(
-          "🎉 Group Approved!\nUse " + global.GoatBot.config.prefix + "help to view commands.",
-          group.threadID
-        );
-        await api.changeNickname(
-          global.GoatBot.config.nickNameBot || "🌬️ Raven Ai ✨",
-          group.threadID,
-          api.getCurrentUserID()
-        );
-        count++;
-      } catch {
-        count++;
-      }
-    }
-
-    for (const idx of indexes.sort((a,b)=>b-a)) {
-      if (idx > 0 && idx <= pending.length) pending.splice(idx-1,1);
-    }
-
-    return api.sendMessage(`✅ Approved ${count} group(s).`, event.threadID);
-  },
-
-  onStart: async function ({ api, event, args, usersData }) {
-    const { threadID, messageID } = event;
-
-    if (!global.GoatBot.config.adminBot.includes(event.senderID)) {
-      return api.sendMessage("❌ You do not have permission to use this command.", threadID);
-    }
-
-    const type = args[0]?.toLowerCase();
-    if (!type) {
-      return api.sendMessage(
-        "📌 Usage: pending [user / thread / all]\nTry: pending thread",
-        threadID
-      );
-    }
-
-    try {
-      let filteredList = await this.fetchPendingList(api, usersData, type);
-
-      // Retry mechanism if no pending found
-      if (filteredList.length === 0) {
-        console.log("[RETRY] No pending found. Retrying in 5 seconds...");
-        await new Promise(r => setTimeout(r, 5000));
-        filteredList = await this.fetchPendingList(api, usersData, type);
-      }
-
-      if (filteredList.length === 0) {
-        return api.sendMessage("✨ No new pending requests found.", threadID);
-      }
-
-      let msg = `╭─ ⭕ Pending ${type.charAt(0).toUpperCase() + type.slice(1)} List ⭕ ─╮\n`;
-      let index = 1;
-      for (const single of filteredList) {
-        const name = single.name || (await usersData.getName(single.threadID)) || "Unknown";
-        msg += `│ ✨ [${index}] • ${name}\n`;
-        index++;
-      }
-      msg += "╰────────────────╯\n\n";
-      msg += "👉 Reply with number(s) to approve.\n";
-      msg += '❌ Reply "c" to cancel.';
-
-      return api.sendMessage(
-        msg,
-        threadID,
-        (error, info) => {
-          global.GoatBot.onReply.set(info.messageID, {
-            commandName: this.config.name,
-            messageID: info.messageID,
-            author: event.senderID,
-            pending: filteredList,
-          });
-        },
-        messageID
-      );
-
-    } catch (error) {
-      console.log("ERROR:", error);
-      return api.sendMessage("⚠ Unable to fetch pending list.", threadID);
-    }
-  }
-};
+ if (list.length != 0) return api.sendMessage(getLang("returnListPending", list.length, msg), threadID, (err, info) => {
+ global.GoatBot.onReply.set(info.messageID, {
+ commandName,
+ messageID: info.messageID,
+ author: event.senderID,
+ pending: list
+ })
+ }, messageID);
+ else return api.sendMessage(getLang("returnListClean"), threadID, messageID);
+}
+     }
