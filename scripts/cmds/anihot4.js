@@ -5,63 +5,65 @@ const { createCanvas, loadImage } = require("canvas");
 
 module.exports = {
   config: {
-    name: "anihot4",
-    version: "1.0",
+    name: "anihot3",
+    version: "2.0",
     author: "Bassit",
     countDown: 5,
     role: 0,
     category: "fun",
     guide: {
-      en: "Reply to someone's message and type: anihot4"
+      en: "Reply to someone's message and type anihot3"
     }
   },
 
   onStart: async function ({ message, event, usersData }) {
-
     if (!event.messageReply) {
       return message.reply(
-        "❌ Reply to someone's message first.\n\n" +
-        "Example:\nanihot4"
+        "❌ Reply to someone's message first.\n\nExample:\nanihot3"
       );
     }
 
-    const targetID = event.messageReply.senderID;
     const myID = event.senderID;
+    const targetID = event.messageReply.senderID;
 
-    // الصورة الأساسية من Postimages
+    // الصورة الأصلية من Postimages
     const templateURL =
-      "https://i.postimg.cc/CwMtRR12/Screenshot-20260925-144130.jpg";
+      "https://i.postimg.cc/k7jHK7Rx/Screenshot-20260925-144144.jpg";
 
     const cacheDir = path.join(__dirname, "cache");
     await fs.ensureDir(cacheDir);
 
     const templatePath = path.join(
       cacheDir,
-      "anihot4-template.jpg"
+      "anihot3-template.jpg"
     );
 
     const myAvatarPath = path.join(
       cacheDir,
-      `anihot4-my-${myID}.jpg`
+      "anihot3-my.jpg"
     );
 
     const targetAvatarPath = path.join(
       cacheDir,
-      `anihot4-target-${targetID}.jpg`
+      "anihot3-target.jpg"
     );
 
     const outputPath = path.join(
       cacheDir,
-      "anihot4-result.jpg"
+      `anihot3-${Date.now()}.jpg`
     );
 
     try {
 
-      // تحميل الصورة الأساسية
+      // ==============================
+      // تحميل الصورة الأصلية
+      // ==============================
+
       const template = await axios.get(
         templateURL,
         {
-          responseType: "arraybuffer"
+          responseType: "arraybuffer",
+          timeout: 30000
         }
       );
 
@@ -70,7 +72,10 @@ module.exports = {
         template.data
       );
 
+      // ==============================
       // جلب صور البروفايل
+      // ==============================
+
       const myAvatarURL =
         await usersData.getAvatarUrl(myID);
 
@@ -79,19 +84,24 @@ module.exports = {
 
       if (!myAvatarURL || !targetAvatarURL) {
         return message.reply(
-          "❌ Couldn't get the profile pictures."
+          "❌ Couldn't get both profile pictures."
         );
       }
 
-      // تحميل الصور
+      // ==============================
+      // تحميل الصورتين
+      // ==============================
+
       const [myAvatar, targetAvatar] =
         await Promise.all([
           axios.get(myAvatarURL, {
-            responseType: "arraybuffer"
+            responseType: "arraybuffer",
+            timeout: 30000
           }),
 
           axios.get(targetAvatarURL, {
-            responseType: "arraybuffer"
+            responseType: "arraybuffer",
+            timeout: 30000
           })
         ]);
 
@@ -105,7 +115,10 @@ module.exports = {
         targetAvatar.data
       );
 
+      // ==============================
       // فتح الصور
+      // ==============================
+
       const base =
         await loadImage(templatePath);
 
@@ -115,7 +128,10 @@ module.exports = {
       const targetPhoto =
         await loadImage(targetAvatarPath);
 
-      // Canvas
+      // ==============================
+      // إنشاء Canvas
+      // ==============================
+
       const canvas =
         createCanvas(
           base.width,
@@ -129,34 +145,41 @@ module.exports = {
       ctx.drawImage(
         base,
         0,
-        0
+        0,
+        base.width,
+        base.height
       );
 
-      /*
-       * صورة الشخص الذي رديتي عليه
-       * فوق الشخصية الخاصة به
-       */
-      drawProfile(
-        ctx,
-        targetPhoto,
-        300,
-        100,
-        120
-      );
+      // =================================
+      // 👦 الولد = صورتك أنت
+      // =================================
 
-      /*
-       * صورتك الشخصية
-       * فوق الشخصية الخاصة بك
-       */
-      drawProfile(
+      drawAvatar(
         ctx,
         myPhoto,
-        850,
-        80,
-        120
+
+        760,
+        55,
+        220
       );
 
+      // =================================
+      // 👧 البنت = صورة العضو
+      // =================================
+
+      drawAvatar(
+        ctx,
+        targetPhoto,
+
+        300,
+        105,
+        220
+      );
+
+      // ==============================
       // حفظ الصورة
+      // ==============================
+
       const buffer =
         canvas.toBuffer(
           "image/jpeg",
@@ -170,7 +193,7 @@ module.exports = {
         buffer
       );
 
-      // إرسال النتيجة
+      // إرسال الصورة
       return message.reply({
         attachment:
           fs.createReadStream(outputPath)
@@ -179,23 +202,23 @@ module.exports = {
     } catch (error) {
 
       console.error(
-        "anihot4 error:",
+        "ANIHOT3 ERROR:",
         error
       );
 
       return message.reply(
-        "❌ An error occurred while creating the image."
+        "❌ Failed to create the image."
       );
     }
   }
 };
 
 
-// =================================
+// =======================================
 // رسم صورة البروفايل بشكل دائري
-// =================================
+// =======================================
 
-function drawProfile(
+function drawAvatar(
   ctx,
   image,
   x,
@@ -217,9 +240,10 @@ function drawProfile(
   );
 
   ctx.closePath();
+
   ctx.clip();
 
-  // ضبط الصورة داخل الدائرة
+  // جعل الصورة تغطي الدائرة كاملة
   const scale =
     Math.max(
       size / image.width,
@@ -261,10 +285,10 @@ function drawProfile(
     Math.PI * 2
   );
 
-  ctx.lineWidth = 5;
+  ctx.lineWidth = 7;
   ctx.strokeStyle = "#ffffff";
 
   ctx.stroke();
 
   ctx.restore();
-  }
+}
